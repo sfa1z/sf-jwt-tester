@@ -3,7 +3,7 @@
 # Show usage if no environment specified
 if [ "$#" -lt 1 ]; then
     echo "Usage: $0 <environment>"
-    echo "Environment can be: uat or prod"
+    echo "Environment can be: uat, uat2 or prod"
     echo "Example: $0 uat"
     exit 1
 fi
@@ -12,8 +12,8 @@ fi
 ENV=$(echo "$1" | tr '[:upper:]' '[:lower:]')  # Convert to lowercase
 
 # Validate environment
-if [[ "$ENV" != "uat" && "$ENV" != "prod" ]]; then
-    echo "Error: Environment must be either 'uat' or 'prod'"
+if [[ "$ENV" != "uat" && "$ENV" != "prod"  && "$ENV" != "uat2" ]]; then
+    echo "Error: Environment must be either 'uat', 'uat2' or 'prod'"
     exit 1
 fi
 
@@ -41,6 +41,7 @@ done
 # The auth endpoint (remove any trailing slash from LOGIN_URL)
 LOGIN_URL="${LOGIN_URL%/}"  # Remove trailing slash if present
 AUTH_ENDPOINT="${LOGIN_URL}/services/oauth2/token"
+# JWT_AUDIENCE="${LOGIN_URL}/services/oauth2/token"
 
 # Check if required tools are installed
 for tool in openssl jq keytool; do
@@ -79,18 +80,20 @@ openssl pkcs12 -in "$TEMP_DIR/temp.p12" -nodes \
 create_jwt_parts() {
     # Create header and payload as single-line JSON
     header=$(echo -n '{"alg":"RS256","typ":"JWT"}')
-    
+
     # Get current timestamp and expiration (5 minutes from now)
     now=$(date +%s)
     exp=$((now + 300))
-    
+
     # Create payload as single-line JSON
     payload=$(echo -n "{\"iss\":\"$CLIENT_ID\",\"sub\":\"$USERNAME\",\"aud\":\"$JWT_AUDIENCE\",\"exp\":$exp,\"iat\":$now}")
-    
+
+    # ,\"grant_type\":'urn:ietf:params:oauth:grant-type:jwt-bearer'}")
+
     # Base64url encode header and payload - ensure single line output
     b64_header=$(echo -n "$header" | base64 -w0 | tr '/+' '_-' | tr -d '=')
     b64_payload=$(echo -n "$payload" | base64 -w0 | tr '/+' '_-' | tr -d '=')
-    
+
     echo -n "${b64_header}.${b64_payload}"
 }
 
@@ -133,7 +136,7 @@ echo "$response"
 echo -e "\nFormatted Response:"
 if echo "$response" | jq -e '.' >/dev/null 2>&1; then
     echo "$response" | jq '.'
-    
+
     # Check for error first
     if echo "$response" | jq -e '.error' >/dev/null 2>&1; then
         echo -e "\nError! Authentication failed:"
@@ -141,11 +144,11 @@ if echo "$response" | jq -e '.' >/dev/null 2>&1; then
         echo "Description: $(echo "$response" | jq -r '.error_description')"
         exit 1
     fi
-    
+
     # If no error, extract and display important parts
     access_token=$(echo "$response" | jq -r '.access_token')
     instance_url=$(echo "$response" | jq -r '.instance_url')
-    
+
     echo -e "\nSuccess! Access token received."
     echo "Instance URL: $instance_url"
     echo "Access Token: ${access_token:0:20}..." # Show only first 20 chars
